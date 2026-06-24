@@ -1,6 +1,6 @@
 // motion detecting with pir sensore 
 
-int pir = 14;     //pir sensore pin number
+int pir = 12;     //pir sensore pin number
 int led = 21;
 
 void setup() {

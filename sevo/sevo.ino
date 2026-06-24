@@ -1,11 +1,11 @@
-#include<Servo.h>     // Servo hader file
+#include<ESP32Servo.h>     // Servo hader file
 
 Servo myservo;        // Servo object
 
 int pos = 0;
 
 void setup(){
-  myservo.attach(8);         // microcontrolar pin dicler
+  myservo.attach(2);         // microcontrolar pin dicler
 }
 
 void loop(){

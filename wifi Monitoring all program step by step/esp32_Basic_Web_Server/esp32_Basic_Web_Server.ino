@@ -11,8 +11,8 @@ work flow ->
 
 #include <WiFi.h>                                    // wifi hader file
 
-const char* ssid = "Bhubon WiFii";                   // wifi name
-const char* password = "bhubon@@##@@##";             // wifi password
+const char* ssid = "OPPO A60";                   // wifi name
+const char* password = "12345678";             // wifi password
 
 WiFiServer server(80);                               // server token
 

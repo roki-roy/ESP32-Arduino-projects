@@ -1,0 +1,638 @@
+﻿<!--
+## VS Code — Voice Control Webpage
+
+VS Code is used to create the **web-based user interface** for controlling the ESP32.
+
+### Main Functions
+
+* Provides the graphical control webpage.
+* Contains the microphone/voice-control button.
+* Uses **JavaScript Web Speech Recognition API** to convert voice commands into text.
+* Processes the recognized command.
+* Sends HTTP requests directly to the ESP32 over the same local Wi-Fi network.
+* Allows the ESP32 IP address to be entered manually.
+* Can be opened from a phone or laptop connected to the same Wi-Fi network.
+
+### Voice Commands
+
+* “Light ON” → Relay 1 ON
+* “Light OFF” → Relay 1 OFF
+* “AC ON” → Relay 2 ON
+* “AC OFF” → Relay 2 OFF
+* “All ON” → All connected loads ON
+* “All OFF” → All connected loads OFF
+* “Hello / Hi” → System response
+* “Stop / Exit” → Stops voice control
+
+### Communication
+
+The webpage sends commands such as:
+
+`http://ESP32-IP/relay1/on`
+
+The ESP32 receives the HTTP request and controls the corresponding relay.
+
+### Important
+
+The **VS Code webpage contains the HTML, CSS, and JavaScript**, including the voice-recognition `<script>`. The Arduino IDE code does not need that webpage script.
+
+-->
+
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#2b2b4e">
+
+<title>ESP32 Voice Control</title>
+
+<style>
+    * {
+        box-sizing: border-box;
+    }
+
+    body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: Arial, sans-serif;
+        background: linear-gradient(135deg, #2b2b4e, #4a4a73);
+        color: white;
+
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+
+        padding: 20px;
+        text-align: center;
+    }
+
+    h1 {
+        color: #ff5d5d;
+        font-size: clamp(28px, 5vw, 42px);
+        margin: 0 0 18px;
+    }
+
+    .ip-panel {
+        width: min(90vw, 420px);
+
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+
+        border-radius: 14px;
+        padding: 12px 14px;
+
+        margin-bottom: 18px;
+    }
+
+    .ip-label {
+        display: block;
+        font-size: 14px;
+        color: #dfeaff;
+        margin-bottom: 8px;
+    }
+
+    .ip-row {
+        display: flex;
+        align-items: center;
+
+        background: rgba(0, 0, 0, 0.15);
+
+        border-radius: 10px;
+        overflow: hidden;
+
+        border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    .ip-row span {
+        background: rgba(255, 255, 255, 0.06);
+
+        padding: 12px 10px;
+
+        font-size: 14px;
+        color: #dfeaff;
+    }
+
+    #esp32Ip {
+        width: 100%;
+
+        border: none;
+        outline: none;
+
+        background: transparent;
+        color: white;
+
+        font-size: 18px;
+
+        padding: 12px;
+    }
+
+    #voiceBtn {
+        width: 150px;
+        height: 150px;
+
+        border-radius: 50%;
+
+        border: 3px solid #ff5d5d;
+
+        background: #eef3ec;
+
+        font-size: 45px;
+
+        cursor: pointer;
+
+        transition: 0.2s ease;
+
+        box-shadow: 0 0 15px rgba(255, 93, 93, 0.5);
+
+        margin: 10px 0;
+    }
+
+    #voiceBtn:hover {
+        transform: scale(1.05);
+    }
+
+    #voiceBtn.listening {
+        background: #ff5d5d;
+        color: white;
+
+        transform: scale(1.05);
+
+        box-shadow: 0 0 30px rgba(255, 93, 93, 0.9);
+    }
+
+    #result {
+        min-height: 40px;
+
+        text-align: center;
+
+        font-size: clamp(22px, 4vw, 30px);
+
+        margin: 18px 10px 0;
+
+        color: #dfeaff;
+    }
+
+    #statusText {
+        margin-top: 16px;
+
+        font-size: clamp(18px, 3vw, 26px);
+
+        color: #b7ffb7;
+
+        text-align: center;
+    }
+
+    @media (max-width: 480px) {
+
+        body {
+            padding: 18px 12px;
+        }
+
+        #voiceBtn {
+            width: 120px;
+            height: 120px;
+
+            font-size: 38px;
+        }
+
+        .ip-panel {
+            padding: 10px 12px;
+        }
+    }
+</style>
+
+</head>
+
+<body>
+
+<h1>ESP32 Voice Control System</h1>
+
+<div class="ip-panel">
+
+    <label class="ip-label" for="esp32Ip">
+        ESP32 IP Address
+    </label>
+
+    <div class="ip-row">
+
+        <span>http://</span>
+
+        <input
+            id="esp32Ip"
+            type="text"
+            value="192.168.0.101"
+            autocomplete="off"
+        >
+
+    </div>
+
+</div>
+
+<button
+    id="voiceBtn"
+    onclick="startVoice()"
+    aria-label="start voice command"
+>
+    🎙️
+</button>
+
+<h2 id="result">
+    Say something...
+</h2>
+
+<div id="statusText">
+    System ready
+</div>
+
+
+<script>
+
+    const voiceBtn = document.getElementById("voiceBtn");
+    const result = document.getElementById("result");
+    const statusText = document.getElementById("statusText");
+    const ipInput = document.getElementById("esp32Ip");
+
+    let recognition = null;
+    let isListening = false;
+
+
+    // Get ESP32 IP address
+    function getEsp32BaseUrl() {
+
+        let raw = (ipInput.value || "").trim();
+
+        if (!raw) {
+            raw = "192.168.0.101";
+        }
+
+        // Remove http:// or https://
+        raw = raw.replace(/^https?:\/\//i, "");
+
+        // Remove ending /
+        raw = raw.replace(/\/$/, "");
+
+        return raw;
+    }
+
+
+    // Update status text
+    function updateStatus(text) {
+
+        statusText.textContent = text;
+    }
+
+
+    // Send command to ESP32
+    function sendCommand(path) {
+
+        const target =
+            "http://" +
+            getEsp32BaseUrl() +
+            path;
+
+        console.log("Sending:", target);
+
+        updateStatus("Sending command...");
+
+        fetch(target, {
+            method: "GET",
+            mode: "cors"
+        })
+
+        .then(response => {
+
+            if (!response.ok) {
+                throw new Error("ESP32 HTTP error");
+            }
+
+            return response.text();
+        })
+
+        .then(data => {
+
+            console.log("ESP32:", data);
+
+            updateStatus("Command sent successfully");
+        })
+
+        .catch(error => {
+
+            console.error("ESP32 connection error:", error);
+
+            updateStatus("ESP32 connection error");
+        });
+    }
+
+
+    // Process voice command
+    function processCommand(command) {
+
+        const text =
+            command.toLowerCase().trim();
+
+
+        // LIGHT ON
+        if (
+            text.includes("light on") ||
+            text.includes("lamp on") ||
+            text.includes("led on")
+        ) {
+
+            sendCommand("/relay1/on");
+
+            result.textContent =
+                "Command: Light ON";
+
+            updateStatus(
+                "Light is ON"
+            );
+        }
+
+
+        // LIGHT OFF
+        else if (
+            text.includes("light off") ||
+            text.includes("lamp off") ||
+            text.includes("led off")
+        ) {
+
+            sendCommand("/relay1/off");
+
+            result.textContent =
+                "Command: Light OFF";
+
+            updateStatus(
+                "Light is OFF"
+            );
+        }
+
+
+        // AC ON
+        else if (
+            text.includes("ac on") ||
+            text.includes("AC on") ||
+            text.includes("air conditioning on")
+        ) {
+
+            sendCommand("/relay2/on");
+
+            result.textContent =
+                "Command: AC ON";
+
+            updateStatus(
+                "AC is ON"
+            );
+        }
+
+
+        // AC OFF
+        else if (
+            text.includes("ac off") ||
+            text.includes("ac of") ||
+            text.includes("air conditioning off")
+        ) {
+
+            sendCommand("/relay2/off");
+
+            result.textContent =
+                "Command: AC OFF";
+
+            updateStatus(
+                "AC is OFF"
+            );
+        }
+
+
+        // ALL ON
+        else if (
+            text.includes("all on") ||
+            text.includes("all loads on")
+        ) {
+
+            sendCommand("/all/on");
+
+            result.textContent =
+                "Command: ALL ON";
+
+            updateStatus(
+                "All loads are ON"
+            );
+        }
+
+
+        // ALL OFF
+        else if (
+            text.includes("all off") ||
+            text.includes("all of")
+        ) {
+
+            sendCommand("/all/off");
+
+            result.textContent =
+                "Command: ALL OFF";
+
+            updateStatus(
+                "All loads are OFF"
+            );
+        }
+
+
+        // HELLO
+        else if (
+            text.includes("hello") ||
+            text === "hi"
+        ) {
+
+            result.textContent =
+                "Hello there!";
+
+            updateStatus(
+                "System ready"
+            );
+        }
+
+
+        // STOP
+        else if (
+            text.includes("stop") ||
+            text.includes("exit")
+        ) {
+
+            result.textContent =
+                "Command: STOP";
+
+            updateStatus(
+                "Voice control stopped"
+            );
+        }
+
+
+        // UNKNOWN COMMAND
+        else {
+
+            result.textContent =
+                "Heard: " + command;
+
+            updateStatus(
+                "Command not recognized"
+            );
+        }
+    }
+
+
+    // Start voice recognition
+    function startVoice() {
+
+        const SpeechRecognition =
+            window.SpeechRecognition ||
+            window.webkitSpeechRecognition;
+
+
+        // Check browser support
+        if (!SpeechRecognition) {
+
+            result.textContent =
+                "Voice recognition not supported";
+
+            updateStatus(
+                "Use Google Chrome"
+            );
+
+            return;
+        }
+
+
+        // Create recognition object
+        if (!recognition) {
+
+            recognition =
+                new SpeechRecognition();
+
+
+            recognition.lang =
+                "en-US";
+
+
+            recognition.continuous =
+                false;
+
+
+            recognition.interimResults =
+                false;
+
+
+            // Voice started
+            recognition.onstart =
+                function () {
+
+                    isListening = true;
+
+                    voiceBtn.classList.add(
+                        "listening"
+                    );
+
+                    voiceBtn.textContent =
+                        "🎤";
+
+                    updateStatus(
+                        "Listening..."
+                    );
+                };
+
+
+            // Voice result
+            recognition.onresult =
+                function (event) {
+
+                    const transcript =
+                        event.results[0][0]
+                            .transcript;
+
+
+                    result.textContent =
+                        transcript;
+
+
+                    processCommand(
+                        transcript
+                    );
+                };
+
+
+            // Voice error
+            recognition.onerror =
+                function (event) {
+
+                    console.log(
+                        "Speech error:",
+                        event.error
+                    );
+
+
+                    isListening = false;
+
+                    voiceBtn.classList.remove(
+                        "listening"
+                    );
+
+                    voiceBtn.textContent =
+                        "🎙️";
+
+
+                    updateStatus(
+                        "Voice error: " +
+                        event.error
+                    );
+                };
+
+
+            // Voice ended
+            recognition.onend =
+                function () {
+
+                    isListening = false;
+
+                    voiceBtn.classList.remove(
+                        "listening"
+                    );
+
+                    voiceBtn.textContent =
+                        "🎙️";
+
+
+                    if (
+                        statusText.textContent ===
+                        "Listening..."
+                    ) {
+
+                        updateStatus(
+                            "System ready"
+                        );
+                    }
+                };
+        }
+
+
+        // Stop listening
+        if (isListening) {
+
+            recognition.stop();
+
+        }
+
+        // Start listening
+        else {
+
+            recognition.start();
+        }
+    }
+
+</script>
+
+</body>
+
+</html>

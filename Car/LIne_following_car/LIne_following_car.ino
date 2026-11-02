@@ -248,8 +248,8 @@ void loop()
 
 void forward()
 {
-  analogWrite(Ena, 145);
-  analogWrite(Enb, 145);
+  analogWrite(Ena, 115);
+  analogWrite(Enb, 115);
 
   digitalWrite(In1, HIGH);
   digitalWrite(In2, LOW);
@@ -270,8 +270,8 @@ void back()
 
 void left()
 {
-  analogWrite(Ena, 150);
-  analogWrite(Enb, 150);
+  analogWrite(Ena, 100);
+  analogWrite(Enb, 100);
 
   digitalWrite(In1, LOW);
   digitalWrite(In2, HIGH);
@@ -281,8 +281,8 @@ void left()
 
 void right()
 {
-  analogWrite(Ena, 150);
-  analogWrite(Enb, 150);
+  analogWrite(Ena, 100);
+  analogWrite(Enb, 100);
 
   digitalWrite(In1, HIGH);
   digitalWrite(In2, LOW);
